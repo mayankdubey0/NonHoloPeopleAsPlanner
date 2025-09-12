@@ -37,22 +37,20 @@ After multiple runs, you may use `matric_cal_new.py` to calculate the metrics fo
 
 Feel free to raise an issue if you have any questions :blush:
 
-## TODO
-- [ ] update RAL citation
-
 ## Citation
 If you find this work useful, please cite [Following Is All You Need: Robot Crowd Navigation Using People As Planners](https://arxiv.org/abs/2504.10828) ([pdf](https://arxiv.org/abs/2504.10828), [video](https://youtu.be/xnX6_-D2ZfQ)):
 
 ```bibtex
-@misc{liao2025followingneedrobotcrowd,
-      title={Following Is All You Need: Robot Crowd Navigation Using People As Planners}, 
-      author={Yuwen Liao and Xinhang Xu and Ruofei Bai and Yizhuo Yang and Muqing Cao and Shenghai Yuan and Lihua Xie},
-      year={2025},
-      eprint={2504.10828},
-      archivePrefix={arXiv},
-      primaryClass={cs.RO},
-      url={https://arxiv.org/abs/2504.10828}, 
-}
+@ARTICLE{11123734,
+  author={Liao, Yuwen and Xu, Xinhang and Bai, Ruofei and Yang, Yizhuo and Cao, Muqing and Yuan, Shenghai and Xie, Lihua},
+  journal={IEEE Robotics and Automation Letters}, 
+  title={Following is All You Need: Robot Crowd Navigation Using People as Planners}, 
+  year={2025},
+  volume={10},
+  number={10},
+  pages={9814-9821},
+  keywords={Robots;Navigation;Planning;Collision avoidance;Robot sensing systems;Trajectory;Human intelligence;Training;Legged locomotion;Data mining;Human-aware motion planning;safety in HRI;social HRI},
+  doi={10.1109/LRA.2025.3598567}}
 ```
 
 ## Contributors
