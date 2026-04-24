@@ -556,7 +556,7 @@ class Robot:
 
         # Subscribers
         self.model_info_sub = rospy.Subscriber('/gazebo/model_info', ModelInfo, self.model_info_callback)
-        self.odom_sub = rospy.Subscriber('/robot_1/odom', Odometry, self.odom_callback)
+        self.odom_sub = rospy.Subscriber('/odom', Odometry, self.odom_callback)
         self.mission_sub = rospy.Subscriber('/env_control', Int32, self.mission_callback)  # New subscriber for env_control
         self.laser_sub = rospy.Subscriber('/robot_1/laser_scan', LaserScan, self.laser_callback)
         self.invisable_pub=rospy.Publisher('/invisable_id',Int32MultiArray,queue_size=1)
