@@ -76,7 +76,7 @@ class Controller:
         # Extract linear and angular velocities
         self.vx = msg.linear.x
         self.vy = msg.linear.y
-        print(f"Get velocity: vx={self.vx}, vy={self.vy}")
+        print(f"(DIH) Get velocity: vx={self.vx}, vy={self.vy}")
         return
 
     def main_loop(self):
