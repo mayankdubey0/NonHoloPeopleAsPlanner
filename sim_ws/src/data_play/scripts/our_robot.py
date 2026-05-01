@@ -22,137 +22,255 @@ from gazebo_msgs.msg import ModelState
 
 from check_visibility import human_scoring,get_visible_region
 
-class social_force:
-    def __init__(self,obs_list,radius):
-        self.obs_list=obs_list
-        self.A=1.5
-        self.B=1.0
-        self.radius=radius
-        self.v_pref=1.0
-        self.KI = 1.0
+########## Mayank Change ##############3
+# class social_force:
+#     def __init__(self,obs_list,radius):
+#         self.obs_list=obs_list
+#         self.A=1.5
+#         self.B=1.0
+#         self.radius=radius
+#         self.v_pref=1.0
+#         self.KI = 1.0
     
-    def point_to_line_distance_with_point(self, x0, y0, x1, y1, x2, y2):
-        # Line coefficients: Ax + By + C = 0
-        A = y2 - y1
-        B = x1 - x2
-        C = x2 * y1 - x1 * y2
+#     def point_to_line_distance_with_point(self, x0, y0, x1, y1, x2, y2):
+#         # Line coefficients: Ax + By + C = 0
+#         A = y2 - y1
+#         B = x1 - x2
+#         C = x2 * y1 - x1 * y2
 
-        # Perpendicular distance
-        distance = abs(A * x0 + B * y0 + C) / math.sqrt(A**2 + B**2)
+#         # Perpendicular distance
+#         distance = abs(A * x0 + B * y0 + C) / math.sqrt(A**2 + B**2)
 
-        # Finding the closest point on the line
-        # Parametric equation of the line
-        if A**2 + B**2 == 0:  # Avoid division by zero for degenerate line
-            x_closest = x0
-            y_closest = y0
-            return distance, x_closest, y_closest
+#         # Finding the closest point on the line
+#         # Parametric equation of the line
+#         if A**2 + B**2 == 0:  # Avoid division by zero for degenerate line
+#             x_closest = x0
+#             y_closest = y0
+#             return distance, x_closest, y_closest
 
-        # Perpendicular projection formula
-        x_closest = (B * (B * x0 - A * y0) - A * C) / (A**2 + B**2)
-        y_closest = (A * (-B * x0 + A * y0) - B * C) / (A**2 + B**2)
+#         # Perpendicular projection formula
+#         x_closest = (B * (B * x0 - A * y0) - A * C) / (A**2 + B**2)
+#         y_closest = (A * (-B * x0 + A * y0) - B * C) / (A**2 + B**2)
 
-        dist1=(x_closest-x1)**2+(y_closest-y1)**2
-        dist2=(x_closest-x2)**2+(y_closest-y2)**2
+#         dist1=(x_closest-x1)**2+(y_closest-y1)**2
+#         dist2=(x_closest-x2)**2+(y_closest-y2)**2
 
-        dist_1_2=(x1-x2)**2+(y1-y2)**2
+#         dist_1_2=(x1-x2)**2+(y1-y2)**2
 
-        if dist1>dist_1_2 or dist2>dist_1_2:
-            x_closest=100000
-            y_closest=100000
-            distance=100000
+#         if dist1>dist_1_2 or dist2>dist_1_2:
+#             x_closest=100000
+#             y_closest=100000
+#             distance=100000
 
-        return distance, x_closest, y_closest
+#         return distance, x_closest, y_closest
 
-    def predict(self,goal,state,humans,mapping,cv_pref):
-        self.v_pref=cv_pref
-        delta_position=goal-state[0:2]
-        delta_x=delta_position[0]
-        delta_y=delta_position[1]
-        dist_to_goal = np.linalg.norm(delta_position)
-        desired_vx = (delta_x / dist_to_goal) * self.v_pref
-        desired_vy = (delta_y / dist_to_goal) * self.v_pref
-        curr_delta_vx = self.KI * (desired_vx - state[2])
-        curr_delta_vy = self.KI * (desired_vy -state[3])
-        A=self.A
-        B=self.B
-        interaction_vx = 0
-        interaction_vy = 0
-        min_dist_to_human=10000
-        min_dist_to_obs=10000
-        vx_human=0
-        vy_human=0
-        vx_obs=0
-        vy_obs=0
+#     def predict(self,goal,state,humans,mapping,cv_pref):
+#         self.v_pref=cv_pref
+#         delta_position=goal-state[0:2]
+#         delta_x=delta_position[0]
+#         delta_y=delta_position[1]
+#         dist_to_goal = np.linalg.norm(delta_position)
+#         desired_vx = (delta_x / dist_to_goal) * self.v_pref
+#         desired_vy = (delta_y / dist_to_goal) * self.v_pref
+#         curr_delta_vx = self.KI * (desired_vx - state[2])
+#         curr_delta_vy = self.KI * (desired_vy -state[3])
+#         A=self.A
+#         B=self.B
+#         interaction_vx = 0
+#         interaction_vy = 0
+#         min_dist_to_human=10000
+#         min_dist_to_obs=10000
+#         vx_human=0
+#         vy_human=0
+#         vx_obs=0
+#         vy_obs=0
 
-        my_position=state[0:2]
-        min_dist_to_human = float('inf')
+#         my_position=state[0:2]
+#         min_dist_to_human = float('inf')
 
-        for human in humans:
-            human_id = int(human[0])  # Extract the human's ID
-            other_human_pos = human[1:3]  # Extract (pos_x, pos_y)
+#         for human in humans:
+#             human_id = int(human[0])  # Extract the human's ID
+#             other_human_pos = human[1:3]  # Extract (pos_x, pos_y)
             
-            human_radius=1
+#             human_radius=1
 
-            if human_id not in mapping:
-                continue  # Skip if ID is not in mapping
-            if mapping[human_id]==0:
-                human_radius=0.5    
-            elif mapping[human_id]==1:
-                human_radius=0.5
-            elif mapping[human_id]==2:
-                human_radius=0.5
+#             if human_id not in mapping:
+#                 continue  # Skip if ID is not in mapping
+#             if mapping[human_id]==0:
+#                 human_radius=0.5    
+#             elif mapping[human_id]==1:
+#                 human_radius=0.5
+#             elif mapping[human_id]==2:
+#                 human_radius=0.5
 
-            delta_x = my_position[0] - other_human_pos[0]
-            delta_y = my_position[1] - other_human_pos[1]
-            dist_to_human = np.sqrt(delta_x**2 + delta_y**2)
+#             delta_x = my_position[0] - other_human_pos[0]
+#             delta_y = my_position[1] - other_human_pos[1]
+#             dist_to_human = np.sqrt(delta_x**2 + delta_y**2)
 
-            if dist_to_human == 0:  # Avoid division by zero
-                continue
+#             if dist_to_human == 0:  # Avoid division by zero
+#                 continue
 
-            if min_dist_to_human > dist_to_human:
-                min_dist_to_human = dist_to_human
-                vx_human = A * np.exp((self.radius + human_radius - dist_to_human) / B) * (delta_x / dist_to_human)
-                vy_human = A * np.exp((self.radius + human_radius - dist_to_human) / B) * (delta_y / dist_to_human)
+#             if min_dist_to_human > dist_to_human:
+#                 min_dist_to_human = dist_to_human
+#                 vx_human = A * np.exp((self.radius + human_radius - dist_to_human) / B) * (delta_x / dist_to_human)
+#                 vy_human = A * np.exp((self.radius + human_radius - dist_to_human) / B) * (delta_y / dist_to_human)
 
-        interaction_vx += vx_human
-        interaction_vy += vy_human
+#         interaction_vx += vx_human
+#         interaction_vy += vy_human
 
-        for obstacles in self.obs_list:
-            if obstacles.shape[0]==1:
-                delta_x = my_position[0] - obstacles[0,0]
-                delta_y = my_position[1] - obstacles[0,1]
-                dist_to_obs=np.sqrt(delta_x**2 + delta_y**2)
-                if min_dist_to_obs> dist_to_obs:
-                    min_dist_to_obs=dist_to_obs
-                    vx_obs=3*A * np.exp((self.radius - dist_to_obs) / B) * (delta_x / dist_to_obs)
-                    vy_obs=3*A * np.exp((self.radius - dist_to_obs) / B) * (delta_y / dist_to_obs)
+#         for obstacles in self.obs_list:
+#             if obstacles.shape[0]==1:
+#                 delta_x = my_position[0] - obstacles[0,0]
+#                 delta_y = my_position[1] - obstacles[0,1]
+#                 dist_to_obs=np.sqrt(delta_x**2 + delta_y**2)
+#                 if min_dist_to_obs> dist_to_obs:
+#                     min_dist_to_obs=dist_to_obs
+#                     vx_obs=3*A * np.exp((self.radius - dist_to_obs) / B) * (delta_x / dist_to_obs)
+#                     vy_obs=3*A * np.exp((self.radius - dist_to_obs) / B) * (delta_y / dist_to_obs)
+#             else:
+#                 for row_index in range(0,obstacles.shape[0]-1):
+#                     x0=my_position[0]
+#                     y0=my_position[1]
+#                     x1=obstacles[row_index,0]
+#                     y1=obstacles[row_index,1]
+#                     x2=obstacles[row_index+1,0]
+#                     y2=obstacles[row_index+1,1]
+#                     dist_to_obs,x_closest,y_closest=self.point_to_line_distance_with_point(x0,y0,x1,y1,x2,y2)
+#                     delta_x = my_position[0] - x_closest
+#                     delta_y = my_position[1] - y_closest
+#                     dist_to_obs=np.sqrt(delta_x**2 + delta_y**2)
+#                     if min_dist_to_obs> dist_to_obs:
+#                         min_dist_to_obs=dist_to_obs
+#                         vx_obs=3*A * np.exp((self.radius - dist_to_obs) / B) * (delta_x / dist_to_obs)
+#                         vy_obs=3*A * np.exp((self.radius - dist_to_obs) / B) * (delta_y / dist_to_obs)
+#         interaction_vx+=vx_obs*0.1
+#         interaction_vy+=vy_obs*0.1
+#         total_delta_vx = (curr_delta_vx + interaction_vx) 
+#         total_delta_vy = (curr_delta_vy + interaction_vy) 
+#         new_vx = state[2] + total_delta_vx
+#         new_vy = state[3] + total_delta_vy
+#         act_norm = np.linalg.norm([new_vx, new_vy])
+#         if act_norm > self.v_pref:
+#             return np.array([new_vx / act_norm * self.v_pref, new_vy / act_norm * self.v_pref])
+#         else:
+#             return np.array([new_vx, new_vy])
+########## End of Mayank Changes ##########################
+
+class DWA:
+    def __init__(self, obs_list):
+        #################
+        # Tunable Param #
+        #################
+        self.v_max      = 5    # max linear speed (m/s)
+        self.v_min      = 0.0    # min linear speed
+        self.omega_max  = 1.0    # max angular speed (rad/s)
+        self.omega_min  = -1.0
+        self.v_reso     = 0.05   # linear speed resolution
+        self.omega_reso = 0.1    # angular speed resolution
+
+        self.dt         = 1.0 / 30.0  # control timestep (matches robot_controller rate)
+        self.predict_t  = 1.0          # forward simulation time (seconds)
+
+        # Scoring weights
+        self.alpha = 1.0   # heading
+        self.beta  = 0.5   # clearance
+        self.gamma = 0.5   # velocity
+
+        self.obs_list = obs_list
+        self.robot_radius = 1.0
+
+    def motion(self, state, v, omega):
+        """Simulate one step of unicycle motion."""
+        x, y, theta = state
+        x     += v * math.cos(theta) * self.dt
+        y     += v * math.sin(theta) * self.dt
+        theta += omega * self.dt
+        return (x, y, theta)
+
+    def simulate_trajectory(self, state, v, omega):
+        """Simulate forward for predict_t seconds, return final state."""
+        steps = int(self.predict_t / self.dt)
+        for _ in range(steps):
+            state = self.motion(state, v, omega)
+        return state
+
+    def heading_score(self, final_state, subgoal):
+        """How well aligned is the final heading with the subgoal direction."""
+        dx = subgoal[0] - final_state[0]
+        dy = subgoal[1] - final_state[1]
+        goal_angle = math.atan2(dy, dx)
+        angle_diff = goal_angle - final_state[2]
+        angle_diff = math.atan2(math.sin(angle_diff), math.cos(angle_diff))
+        return 1.0 - abs(angle_diff) / math.pi  # 1.0 = perfectly aligned
+
+    def clearance_score(self, final_state):
+        """Minimum distance to any obstacle or human obstacle."""
+        min_dist = float('inf')
+        fx, fy, _ = final_state
+
+        for obs in self.obs_list:
+            if obs.shape[0] == 1:
+                dist = math.sqrt((fx - obs[0,0])**2 + (fy - obs[0,1])**2)
+                min_dist = min(min_dist, dist)
             else:
-                for row_index in range(0,obstacles.shape[0]-1):
-                    x0=my_position[0]
-                    y0=my_position[1]
-                    x1=obstacles[row_index,0]
-                    y1=obstacles[row_index,1]
-                    x2=obstacles[row_index+1,0]
-                    y2=obstacles[row_index+1,1]
-                    dist_to_obs,x_closest,y_closest=self.point_to_line_distance_with_point(x0,y0,x1,y1,x2,y2)
-                    delta_x = my_position[0] - x_closest
-                    delta_y = my_position[1] - y_closest
-                    dist_to_obs=np.sqrt(delta_x**2 + delta_y**2)
-                    if min_dist_to_obs> dist_to_obs:
-                        min_dist_to_obs=dist_to_obs
-                        vx_obs=3*A * np.exp((self.radius - dist_to_obs) / B) * (delta_x / dist_to_obs)
-                        vy_obs=3*A * np.exp((self.radius - dist_to_obs) / B) * (delta_y / dist_to_obs)
-        interaction_vx+=vx_obs*0.1
-        interaction_vy+=vy_obs*0.1
-        total_delta_vx = (curr_delta_vx + interaction_vx) 
-        total_delta_vy = (curr_delta_vy + interaction_vy) 
-        new_vx = state[2] + total_delta_vx
-        new_vy = state[3] + total_delta_vy
-        act_norm = np.linalg.norm([new_vx, new_vy])
-        if act_norm > self.v_pref:
-            return np.array([new_vx / act_norm * self.v_pref, new_vy / act_norm * self.v_pref])
-        else:
-            return np.array([new_vx, new_vy])
+                for i in range(obs.shape[0] - 1):
+                    x1, y1 = obs[i,0], obs[i,1]
+                    x2, y2 = obs[i+1,0], obs[i+1,1]
+                    # distance from point to line segment
+                    dx, dy = x2 - x1, y2 - y1
+                    t = max(0, min(1, ((fx-x1)*dx + (fy-y1)*dy) / (dx*dx + dy*dy + 1e-9)))
+                    cx, cy = x1 + t*dx, y1 + t*dy
+                    dist = math.sqrt((fx-cx)**2 + (fy-cy)**2)
+                    min_dist = min(min_dist, dist)
+
+        if min_dist == float('inf'):
+            return 1.0
+        return min(1.0, min_dist / (self.robot_radius * 3))
+
+    def velocity_score(self, v):
+        """Reward higher forward speeds."""
+        return v / self.v_max if self.v_max > 0 else 0.0
+
+    def predict(self, subgoal, state, humans, mapping, v_pref):
+        """
+        DWA planner. Returns (v, omega) as a numpy array [v, omega].
+        state: [px, py, vx, vy, theta]
+        subgoal: [gx, gy]
+        """
+        px, py, vx, vy, theta = state[0], state[1], state[2], state[3], state[4]
+        current_v     = math.sqrt(vx**2 + vy**2)
+        current_omega = 0.0  # we don't track this separately
+
+        robot_state = (px, py, theta)
+
+        best_score = -float('inf')
+        best_v     = 0.0
+        best_omega = 0.0
+
+        # Sample over all (v, omega) pairs
+        v_samples     = np.arange(self.v_min, self.v_max + self.v_reso, self.v_reso)
+        omega_samples = np.arange(self.omega_min, self.omega_max + self.omega_reso, self.omega_reso)
+
+        for v in v_samples:
+            for omega in omega_samples:
+                final_state = self.simulate_trajectory(robot_state, v, omega)
+
+                h = self.heading_score(final_state, subgoal)
+                c = self.clearance_score(final_state)
+                s = self.velocity_score(v)
+
+                # If too close to obstacle, discard
+                if c < 0.1:
+                    continue
+
+                score = self.alpha * h + self.beta * c + self.gamma * s
+
+                if score > best_score:
+                    best_score = score
+                    best_v     = v
+                    best_omega = omega
+
+        return np.array([best_v, best_omega])
     
 
 class OurPlanner:
@@ -196,7 +314,8 @@ class OurPlanner:
         self.goal=goal
         self.obs_list=obs_list
         self.history_list=[]
-        self.base_controller=social_force(self.obs_list,self.robot_radius)
+        # self.base_controller=social_force(self.obs_list,self.robot_radius) ### Mayank Change ####
+        self.base_controller = DWA(self.obs_list)
         self.list_length=25
         self.state_buffer=[] # list 25, FullState(px, py, vx, vy, radius, gx, gy, v_pref, theta), latest at the end
         self.human_buffer=[] # list of list 25*n, list(ID, px, py, vx, vy), latest at the end
@@ -629,7 +748,8 @@ class Robot:
         if self.robot_state is None:
             return
         with self.lock:
-            state_now=self.robot_state[0:4]
+            # state_now=self.robot_state[0:4] ##### Mayank Change #####
+            state_now = self.robot_state[0:5]
         model_temp=[]
         for i in range(len(msg.ids)):  # Loop through all models
             model_id = msg.ids[i]  # Assuming id is based on index (replace if needed)
@@ -656,35 +776,9 @@ class Robot:
             # cmd_msg.linear.y = action[1]
             # self.cmd_vel_pub.publish(cmd_msg)
 
-            # cmd_msg = Twist()
-            # cmd_msg.linear.x = action[0]   # use SF vx as forward speed (temporary)
-            # cmd_msg.angular.z = 0.0        # no turning yet
-            # self.cmd_vel_pub.publish(cmd_msg)
-
-            # Unicycle controller toward subgoal
-            with self.lock:
-                theta = self.robot_state[4]
-            rx, ry = state_now[0], state_now[1]
-
-            dx = subgoal[0] - rx
-            dy = subgoal[1] - ry
-            dist = math.sqrt(dx**2 + dy**2)
-
-            desired_heading = math.atan2(dy, dx)
-            heading_error = math.atan2(math.sin(desired_heading - theta),
-                                    math.cos(desired_heading - theta))
-
-            k_omega = 1.0
-            omega = max(-1.0, min(1.0, k_omega * heading_error))
-
-            if abs(heading_error) > math.pi / 2:
-                v = 0.0  # rotate in place first
-            else:
-                v = max(0.0, min(0.5, 0.5 * dist))
-
             cmd_msg = Twist()
-            cmd_msg.linear.x = v
-            cmd_msg.angular.z = omega
+            cmd_msg.linear.x = action[0]   # v from DWA
+            cmd_msg.angular.z = action[1]  # omega from DWA
             self.cmd_vel_pub.publish(cmd_msg)
             ######## End of Mayank CHange ############
 
