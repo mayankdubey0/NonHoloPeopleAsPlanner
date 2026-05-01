@@ -183,7 +183,11 @@ class SceneRecorder:
                 with open(self.status_file, "a") as f:
                     # pos_x, pos_y, pos_z = data["pos"]
                     # rot_x, rot_y, rot_z, rot_w = data["rot"]
-                    f.write(f"{timestamp} {robot_pos[0]} {robot_pos[1]}\n")
+                    robot_model = self.model_positions.get("robot_1", {})
+                    robot_rot = robot_model.get("rot", (0, 0, 0, 1))
+                    qx, qy, qz, qw = robot_rot
+                    yaw = np.arctan2(2.0*(qw*qz + qx*qy), 1.0 - 2.0*(qy*qy + qz*qz))
+                    f.write(f"{timestamp} {robot_pos[0]} {robot_pos[1]} {yaw}\n")
                 
                 if timestamp > self.time_limit:
                     with open(os.path.join(self.trial_folder, "status.txt"), "a") as f:

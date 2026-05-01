@@ -179,7 +179,9 @@ class OurPlanner:
         self.weight_goal = 1.0
         self.weight_velocity = 0.5
         self.weight_position = 1.0
+        self.weight_alignment = 0.8  # Added alignment weight
         self.current_leader_bias = 0.05
+        self.alignment_cone_threshold = 0.7  # Cosine of ~45 degrees
 
         # group identification
         self.min_distance_threshold = 1.5
@@ -199,9 +201,6 @@ class OurPlanner:
         self.human_buffer = []
         self.time_step = 0.11
 
-    # FIX #1: Added robot_yaw parameter — replaces the dummy 0.0 yaw previously
-    #         hard-coded into robot_pose for the visibility check. Without this,
-    #         the sensor cone is always oriented east regardless of robot heading.
     def predict(self, state, human_step, mask, laser_scan, robot_yaw=0.0):
 
         while len(self.state_buffer) < self.list_length:
@@ -253,10 +252,6 @@ class OurPlanner:
         ####################
         # Visibility Check #
         ####################
-        group_list = [[agent[0] for agent in group] for group in groups]
-
-        # FIX #1 (continued): Use the real robot_yaw passed in from odom instead
-        #                      of the previous placeholder 0.0.
         robot_pose = [state[0], state[1], robot_yaw]
         human_radius = [self.inflate_radius for i in range(len(human_step))]
         human_scores_list = human_scoring(laser_scan, human_step, robot_pose, human_radius)
@@ -301,7 +296,6 @@ class OurPlanner:
         scores_velocity = {}
         human_speeds = {}
         ideal_speed = self.human_speed_ideal
-        stationary_human = []
         for ped_id, trajectory in neighbor_traj.items():
             total_distance = 0
             steps = min(10, len(trajectory))
@@ -314,7 +308,6 @@ class OurPlanner:
                 scores_velocity[ped_id] = (avg_speed - ideal_speed) / ideal_speed
                 if avg_speed < 0.1:
                     scores_velocity[ped_id] = -10
-                    stationary_human.append(ped_id)
             else:
                 scores_velocity[ped_id] = max(0, 1 - (abs(avg_speed - ideal_speed) / ideal_speed))
 
@@ -342,25 +335,51 @@ class OurPlanner:
             else:
                 scores_position[ped_id] = self.position_penalty
 
+        #####################
+        # 4. Alignment Cone #
+        #####################
+        scores_alignment = {}
+        for ped_id, trajectory in neighbor_traj.items():
+            h_vx, h_vy = trajectory[-1][2], trajectory[-1][3]
+            h_mag = math.sqrt(h_vx**2 + h_vy**2)
+            r_vx, r_vy = math.cos(robot_yaw), math.sin(robot_yaw)
+            
+            if h_mag > 0.1:
+                alignment_dot = (h_vx / h_mag) * r_vx + (h_vy / h_mag) * r_vy
+                scores_alignment[ped_id] = alignment_dot if alignment_dot > self.alignment_cone_threshold else 0
+            else:
+                scores_alignment[ped_id] = 0
+
         #########
         # Total #
         #########
         total_scores = {}
+        print("\n--- Leader Selection Scoring ---")
+        print(f"{'ID':<6} | {'Goal':<6} | {'Vel':<6} | {'Pos':<6} | {'Align':<6} | {'TOTAL':<6}")
+        print("-" * 55)
+
         for ped_id in neighbor_traj.keys():
-            score_goal = scores_goal.get(ped_id, -1)
-            score_velocity = scores_velocity.get(ped_id, -1)
-            score_position = scores_position.get(ped_id, -1)
-            if ped_id not in invisible_list:
-                total_scores[ped_id] = (self.weight_goal * score_goal +
-                                        self.weight_velocity * score_velocity +
-                                        self.weight_position * score_position)
-
-            print(f"ID: {ped_id:>1} | goal: {score_goal:>5.1f} | vel: {score_velocity:>5.1f} | pos: {score_position:>5.1f}")
-
-        for human in total_scores:
-            if human == self.previous_leader:
-                total_scores[human] += self.current_leader_bias
+            if ped_id in invisible_list:
                 continue
+
+            s_goal = scores_goal.get(ped_id, 0)
+            s_vel = scores_velocity.get(ped_id, 0)
+            s_pos = scores_position.get(ped_id, 0)
+            s_align = scores_alignment.get(ped_id, 0)
+
+            weighted_score = (self.weight_goal * s_goal +
+                              self.weight_velocity * s_vel +
+                              self.weight_position * s_pos +
+                              self.weight_alignment * s_align)
+
+            if ped_id == self.previous_leader:
+                weighted_score += self.current_leader_bias
+                label = f"*{ped_id}"
+            else:
+                label = f" {ped_id}"
+
+            total_scores[ped_id] = weighted_score
+            print(f"{label:<6} | {s_goal:>6.2f} | {s_vel:>6.2f} | {s_pos:>6.2f} | {s_align:>6.2f} | {weighted_score:>6.2f}")
 
         if (
             total_scores
@@ -368,7 +387,7 @@ class OurPlanner:
             and goal_distance > 1.0
         ):
             leader_ID = max(total_scores, key=total_scores.get)
-            print(f"Leader ID: {leader_ID}     distance: {goal_distance:.2f}")
+            print(f"WINNER: Agent {leader_ID} at distance: {goal_distance:.2f}")
 
             def get_closest_human_in_group(group, robot_x, robot_y):
                 closest_human = None
@@ -570,18 +589,11 @@ class Robot:
         self.range_max = msg.range_max
 
     def _reset_robot_pose(self):
-        """
-        FIX #4: Helper to teleport robot to start with a deterministic orientation.
-        Previously ModelState was sent without orientation, so the robot could
-        spawn facing any direction after a reset. We now explicitly set yaw=0
-        via a unit quaternion (x=0, y=0, z=0, w=1).
-        """
         model_state = ModelState()
         model_state.model_name = 'robot_1'
         model_state.pose.position.x = self.start_pos[0]
         model_state.pose.position.y = self.start_pos[1]
         model_state.pose.position.z = 0.0
-        # Explicit identity quaternion → yaw = 0 at reset
         model_state.pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
         self.set_state(model_state)
 
@@ -603,11 +615,6 @@ class Robot:
         if self.robot_state is None:
             return
 
-        # FIX #3: Grab both state_now AND robot_yaw together under the same lock
-        # acquisition so that the yaw is guaranteed consistent with the position
-        # and velocity used throughout the rest of this callback. Previously,
-        # robot_yaw was re-read from self.robot_state a second time later in the
-        # callback without the lock, creating a potential race with odom_callback.
         with self.lock:
             state_now = self.robot_state[0:4]
             robot_yaw = self.robot_state[4] if len(self.robot_state) >= 5 else 0.0
@@ -624,8 +631,6 @@ class Robot:
         self.visable_humans = model_temp
 
         if self.start_mission == 1:
-            # FIX #1 (call site): Pass robot_yaw into predict so the visibility
-            # sensor cone is oriented correctly for the non-holonomic robot.
             track_id, action, subgoal, invis_index, edges_visible_region = self.planner.predict(
                 state_now, model_temp, self.id_mask, self.laser_scan, robot_yaw
             )
@@ -636,20 +641,6 @@ class Robot:
                 self.planner.clear_buffer()
 
             cmd_msg = Twist()
-
-            # -----------------------------------------------------------------
-            # NON-HOLONOMIC CONVERSION
-            # The Social Force planner outputs a desired world-frame velocity
-            # vector (vx, vy).  A differential-drive robot cannot execute this
-            # directly — it has no lateral actuator.  We decompose it into:
-            #   v     — forward speed along the robot's heading
-            #   omega — angular rate to steer toward the desired heading
-            #
-            # Speed is attenuated by cos(yaw_error) so the robot slows down
-            # during sharp turns instead of overshooting (Section IV-F style
-            # speed adaptation).  omega is clamped to ±1 rad/s to prevent
-            # spinning in place at high gains.
-            # -----------------------------------------------------------------
             desired_vx = action[0]
             desired_vy = action[1]
 
@@ -663,9 +654,8 @@ class Robot:
             omega = max(-1.0, min(1.0, K_omega * yaw_error))
 
             cmd_msg.linear.x = v_turn
-            cmd_msg.linear.y = 0.0   # strict non-holonomic constraint
+            cmd_msg.linear.y = 0.0   
             cmd_msg.angular.z = omega
-            # -----------------------------------------------------------------
 
             self.cmd_vel_pub.publish(cmd_msg)
 
@@ -696,15 +686,6 @@ class Robot:
             self.planner.clear_buffer()
 
     def odom_callback(self, msg):
-        # FIX #2: A differential-drive robot's odometry reports velocities in
-        # the robot's body frame: twist.linear.x is forward speed, and
-        # twist.linear.y is (hardware-enforced) zero.  The Social Force planner
-        # expects world-frame velocities (vx_world, vy_world) so it can compute
-        # repulsion forces correctly.  We project the body-frame forward speed
-        # into world frame using the current yaw before storing it in
-        # robot_state.  Previously vx = twist.linear.x and vy = twist.linear.y
-        # were stored directly, which gave the planner wrong velocity readings
-        # whenever the robot was not pointing exactly east (yaw = 0).
         px = msg.pose.pose.position.x
         py = msg.pose.pose.position.y
 
@@ -712,9 +693,9 @@ class Robot:
         orientation_list = [orientation_q.x, orientation_q.y, orientation_q.z, orientation_q.w]
         (roll, pitch, yaw) = tf.transformations.euler_from_quaternion(orientation_list)
 
-        v_body = msg.twist.twist.linear.x  # forward speed in robot frame
-        vx = v_body * math.cos(yaw)        # project to world frame
-        vy = v_body * math.sin(yaw)        # project to world frame
+        v_body = msg.twist.twist.linear.x  
+        vx = v_body * math.cos(yaw)        
+        vy = v_body * math.sin(yaw)        
 
         with self.lock:
             self.robot_state = [px, py, vx, vy, yaw]
