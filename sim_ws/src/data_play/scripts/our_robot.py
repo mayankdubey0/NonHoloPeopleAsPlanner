@@ -649,11 +649,44 @@ class Robot:
                 self.planner.clear_buffer()
             # rospy.loginfo(f"track_id: {track_id},action: {action}")
 
+            ########3 Mayank Change #########3
             # Create Twist message
+            # cmd_msg = Twist()
+            # cmd_msg.linear.x = action[0]
+            # cmd_msg.linear.y = action[1]
+            # self.cmd_vel_pub.publish(cmd_msg)
+
+            # cmd_msg = Twist()
+            # cmd_msg.linear.x = action[0]   # use SF vx as forward speed (temporary)
+            # cmd_msg.angular.z = 0.0        # no turning yet
+            # self.cmd_vel_pub.publish(cmd_msg)
+
+            # Unicycle controller toward subgoal
+            with self.lock:
+                theta = self.robot_state[4]
+            rx, ry = state_now[0], state_now[1]
+
+            dx = subgoal[0] - rx
+            dy = subgoal[1] - ry
+            dist = math.sqrt(dx**2 + dy**2)
+
+            desired_heading = math.atan2(dy, dx)
+            heading_error = math.atan2(math.sin(desired_heading - theta),
+                                    math.cos(desired_heading - theta))
+
+            k_omega = 1.0
+            omega = max(-1.0, min(1.0, k_omega * heading_error))
+
+            if abs(heading_error) > math.pi / 2:
+                v = 0.0  # rotate in place first
+            else:
+                v = max(0.0, min(0.5, 0.5 * dist))
+
             cmd_msg = Twist()
-            cmd_msg.linear.x = action[0]
-            cmd_msg.linear.y = action[1]
+            cmd_msg.linear.x = v
+            cmd_msg.angular.z = omega
             self.cmd_vel_pub.publish(cmd_msg)
+            ######## End of Mayank CHange ############
 
             invis_id_msg=Int32MultiArray()
             invis_id_msg.data=invis_index
@@ -683,15 +716,25 @@ class Robot:
             response = self.set_state(model_state)
             self.planner.clear_buffer()
 
+    ############ MAyank Changes ###########3
+    # def odom_callback(self, msg):
+    #     px = msg.pose.pose.position.x
+    #     py = msg.pose.pose.position.y
+    #     vx = msg.twist.twist.linear.x
+    #     vy = msg.twist.twist.linear.y
+    #     with self.lock:
+    #         self.robot_state = [px, py, vx, vy]
+    #     # print(f"robot state {px},{py}")
     def odom_callback(self, msg):
         px = msg.pose.pose.position.x
         py = msg.pose.pose.position.y
         vx = msg.twist.twist.linear.x
         vy = msg.twist.twist.linear.y
+        q = msg.pose.pose.orientation
+        theta = math.atan2(2*(q.w*q.z + q.x*q.y), 1 - 2*(q.y*q.y + q.z*q.z))
         with self.lock:
-            self.robot_state = [px, py, vx, vy]
-        # print(f"robot state {px},{py}")
-        
+            self.robot_state = [px, py, vx, vy, theta]
+    ############3 End of Mayank Changes ##############
 
 if __name__ == '__main__':
     try:

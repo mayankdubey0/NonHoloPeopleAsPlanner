@@ -28,8 +28,8 @@ class Controller:
     def __init__(self):
         # Flag to get robot positions from gazebo
         self.has_get_initial_pose = False
-        self.vx = 0
-        self.vy = 0
+        self.v = 0
+        self.omega = 0
         self.stop = False  # Flag to stop robot
 
         # Subscribe robots' position from Gazebo
@@ -74,9 +74,9 @@ class Controller:
 
     def cmd_vel_callback(self, msg):
         # Extract linear and angular velocities
-        self.vx = msg.linear.x
-        self.vy = msg.linear.y
-        print(f"Get velocity: vx={self.vx}, vy={self.vy}")
+        self.v = msg.linear.x
+        self.omega = msg.angular.z
+        print(f"Get velocity: vx={self.v}, omega={self.omega}")
         return
 
     def main_loop(self):
@@ -95,7 +95,16 @@ class Controller:
                 curr_pose = self.get_robot_pose()
 
                 # Calculate movement
-                new_pose = (curr_pose[0] + self.vx*self.dt, curr_pose[1] + self.vy*self.dt, curr_pose[2])
+                ###### Mayank Change #########
+                # new_pose = (curr_pose[0] + self.vx*self.dt, curr_pose[1] + self.vy*self.dt, curr_pose[2])
+                
+                # Unicycle kinematics
+                new_x     = curr_pose[0] + self.v * math.cos(curr_pose[2]) * self.dt
+                new_y     = curr_pose[1] + self.v * math.sin(curr_pose[2]) * self.dt
+                new_theta = curr_pose[2] + self.omega * self.dt
+                new_pose  = (new_x, new_y, new_theta)
+                ###### End Mayank Change #######
+
 
                 # Set new pose
                 self.set_robot_pose(new_pose)
@@ -106,7 +115,8 @@ class Controller:
 
                 vehicle_roll = 0.0
                 vehicle_pitch = 0.0
-                vehicle_yaw = curr_pose[2]
+                vehicle_yaw = new_pose[2]# vehicle_yaw = curr_pose[2] ##### Mayank Change ######
+
                 geo_quat = tf.quaternion_from_euler(vehicle_roll, vehicle_pitch, vehicle_yaw)
                 robot_state.pose.orientation = Quaternion(*geo_quat)
                 
