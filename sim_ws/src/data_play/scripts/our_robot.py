@@ -179,14 +179,9 @@ class OurPlanner:
         self.weight_goal = 1.0
         self.weight_velocity = 0.5
         self.weight_position = 1.0
-        # FIX: Reduced alignment weight from 0.8 → 0.3 and threshold from 0.7 → 0.0
-        # The original 0.8 weight was too dominant — it would push any human whose
-        # heading didn't closely match the robot's current yaw below zero, causing
-        # the planner to fall back to default even when good leaders existed.
-        # Threshold 0.7 (cos 45°) was also too strict for a non-holonomic robot
-        # that may not yet be facing the same direction as a valid leader.
-        self.weight_alignment = 0.3
-        self.alignment_cone_threshold = 0.0  # any forward-facing human counts
+        # FIXME
+        self.weight_alignment = 0.5
+        self.alignment_cone_threshold = 0.5  # any forward-facing human counts
         self.current_leader_bias = 0.05
 
         # group identification

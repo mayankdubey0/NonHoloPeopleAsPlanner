@@ -168,7 +168,7 @@ for trial_id, data in sorted_trials:
         f.write(f"{trial_id},{1 if data['finish_time'] else 0},{h_coll+o_coll},{dist},{data['finish_time']}\n")
 
 # ── Plotting Separated Graphs ──────────────────────────────────────────────
-latest_trial_id, latest_data = sorted_trials[-1]
+latest_trial_id, latest_data = sorted_trials[-2]
 status = latest_data["status_data"]
 xs, ys, yaws = status[:, 1], status[:, 2], status[:, 3]
 has_yaw = not np.all(np.isnan(yaws))
