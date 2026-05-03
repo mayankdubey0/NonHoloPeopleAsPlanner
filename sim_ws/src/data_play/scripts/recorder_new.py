@@ -19,7 +19,7 @@ class SceneRecorder:
         self.env_pub = rospy.Publisher("/env_control", Int32, queue_size=1)
         self.scene_name = rospy.get_param("scene", "nexus_2_0")
         self.scene_dir = os.path.join("/root/test_data", self.scene_name)  
-        config_path = '/root/sim_ws/src/data_play/dataset/scene_config_30/' + self.scene_name + '.json'
+        config_path = '/root/NonHoloPeopleAsPlanner/sim_ws/src/data_play/dataset/scene_config_30/' + self.scene_name + '.json'
         dt=1.0/30
         with open(config_path, 'r') as f:
             self.scene_config = json.load(f)  # Correct way to load JSON
@@ -55,7 +55,7 @@ class SceneRecorder:
         self.reset_time = 0
         self.iteral_limit = 100
 
-        self.scene_path = '/root/sim_ws/src/data_play/dataset/scene_config_30/' + self.scene_name + '.json'
+        self.scene_path = '/root/NonHoloPeopleAsPlanner/sim_ws/src/data_play/dataset/scene_config_30/' + self.scene_name + '.json'
         with open(self.scene_path, 'r') as f:
             self.scene_config = json.load(f)
 

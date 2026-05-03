@@ -38,8 +38,8 @@ class OurPlanner:
         self.time_step=0.11
         
         # HEIGHT   
-        # config_path = '/root/sim_ws/src/data_play/scripts/CrowdNav_HEIGHT/trained_models/ours_RH_HH_hallwayEnv/configs/config.py'
-        config_path = '/root/sim_ws/src/data_play/scripts/CrowdNav_HEIGHT/trained_models/train_from_scratch/configs/config.py'
+        # config_path = '/root/NonHoloPeopleAsPlanner/sim_ws/src/data_play/scripts/CrowdNav_HEIGHT/trained_models/ours_RH_HH_hallwayEnv/configs/config.py'
+        config_path = '/root/NonHoloPeopleAsPlanner/sim_ws/src/data_play/scripts/CrowdNav_HEIGHT/trained_models/train_from_scratch/configs/config.py'
         spec = importlib.util.spec_from_file_location("config", config_path)
         model_config = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(model_config)
@@ -61,8 +61,8 @@ class OurPlanner:
         device = torch.device("cuda" if config.training.cuda else "cpu")
         self.device = device
         
-        # load_path = "/root/sim_ws/src/data_play/scripts/CrowdNav_HEIGHT/trained_models/ours_RH_HH_hallwayEnv/checkpoints/208200.pt"
-        load_path = "/root/sim_ws/src/data_play/scripts/CrowdNav_HEIGHT/trained_models/train_from_scratch/checkpoints/10415_new.pt"
+        # load_path = "/root/NonHoloPeopleAsPlanner/sim_ws/src/data_play/scripts/CrowdNav_HEIGHT/trained_models/ours_RH_HH_hallwayEnv/checkpoints/208200.pt"
+        load_path = "/root/NonHoloPeopleAsPlanner/sim_ws/src/data_play/scripts/CrowdNav_HEIGHT/trained_models/train_from_scratch/checkpoints/10415_new.pt"
         env_name = config.env.env_name
         eval_dir = "."
         env_config.render_traj = False
@@ -206,7 +206,7 @@ class Robot:
         rospy.init_node('robot_listener', anonymous=True)
         scene=rospy.get_param("scene")
         self.robot_horizon=15.0
-        self.scene_path = '/root/sim_ws/src/data_play/dataset/scene_config_30/' + scene + '.json'
+        self.scene_path = '/root/NonHoloPeopleAsPlanner/sim_ws/src/data_play/dataset/scene_config_30/' + scene + '.json'
 
         with open(self.scene_path, 'r') as f:
             self.scene_config = json.load(f)  # Correct way to load JSON

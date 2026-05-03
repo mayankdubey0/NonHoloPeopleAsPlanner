@@ -211,7 +211,7 @@ class Robot:
         rospy.init_node('robot_listener', anonymous=True)
         scene=rospy.get_param("scene","nexus_2_0")
         self.robot_horizon=15.0
-        self.scene_path = '/root/sim_ws/src/data_play/dataset/scene_config_30/' + scene + '.json'
+        self.scene_path = '/root/NonHoloPeopleAsPlanner/sim_ws/src/data_play/dataset/scene_config_30/' + scene + '.json'
 
         with open(self.scene_path, 'r') as f:
             self.scene_config = json.load(f)  # Correct way to load JSON

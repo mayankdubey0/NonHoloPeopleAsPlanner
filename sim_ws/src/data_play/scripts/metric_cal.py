@@ -128,7 +128,7 @@ scene_name = "crossing_0"
 scene_results = process_scene(scene_name)
 
 track_dict = {}
-pair_file = f"/root/sim_ws/src/data_play/temp/{scene_name}/pair/data_id_label_pairs.txt"
+pair_file = f"/root/NonHoloPeopleAsPlanner/sim_ws/src/data_play/temp/{scene_name}/pair/data_id_label_pairs.txt"
 if os.path.exists(pair_file):
     with open(pair_file, "r") as file:
         next(file)
@@ -137,7 +137,7 @@ if os.path.exists(pair_file):
             if len(parts) == 2:
                 track_dict[int(parts[0])] = parts[1]
 
-config_path = f'/root/sim_ws/src/data_play/dataset/scene_config_30/{scene_name}.json'
+config_path = f'/root/NonHoloPeopleAsPlanner/sim_ws/src/data_play/dataset/scene_config_30/{scene_name}.json'
 with open(config_path, 'r') as f:
     scene_config = json.load(f)
 

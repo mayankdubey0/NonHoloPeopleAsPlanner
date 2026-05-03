@@ -179,9 +179,15 @@ class OurPlanner:
         self.weight_goal = 1.0
         self.weight_velocity = 0.5
         self.weight_position = 1.0
-        self.weight_alignment = 0.8  # Added alignment weight
+        # FIX: Reduced alignment weight from 0.8 → 0.3 and threshold from 0.7 → 0.0
+        # The original 0.8 weight was too dominant — it would push any human whose
+        # heading didn't closely match the robot's current yaw below zero, causing
+        # the planner to fall back to default even when good leaders existed.
+        # Threshold 0.7 (cos 45°) was also too strict for a non-holonomic robot
+        # that may not yet be facing the same direction as a valid leader.
+        self.weight_alignment = 0.3
+        self.alignment_cone_threshold = 0.0  # any forward-facing human counts
         self.current_leader_bias = 0.05
-        self.alignment_cone_threshold = 0.7  # Cosine of ~45 degrees
 
         # group identification
         self.min_distance_threshold = 1.5
@@ -208,6 +214,9 @@ class OurPlanner:
         while len(self.human_buffer) < self.list_length:
             self.human_buffer.append(human_step)
 
+        # print("NEW HUMAN STEP: ", human_step)
+        # print(len(self.state_buffer), len(self.human_buffer), self.list_length)
+
         global_goal_x = self.goal[0]
         global_goal_y = self.goal[1]
         robot_goal_vector = (global_goal_x - state[0], global_goal_y - state[1])
@@ -218,7 +227,9 @@ class OurPlanner:
         #########################
         neighbor_traj = {}
         for timestep in self.human_buffer:
+            # print("Timestep: ", timestep)
             for human in timestep:
+                # print("Human: ", human)
                 id, px, py, vx, vy = human
                 if any(agent[0] == id for agent in human_step):
                     if id not in neighbor_traj:
@@ -262,6 +273,15 @@ class OurPlanner:
             if score < 0:
                 invisible_list.append(human_step[k][0])
 
+        # ── DEBUG: pipeline population ────────────────────────────────────────
+        print(f"\n[DEBUG] robot yaw={math.degrees(robot_yaw):.1f}deg  "
+              f"goal_dist={goal_distance:.2f}m  "
+              f"goal_dir={math.degrees(math.atan2(robot_goal_vector[1], robot_goal_vector[0])):.1f}deg")
+        # print(f"[DEBUG] human_step={len(human_step)}  "
+        #       f"neighbor_traj={len(neighbor_traj)}  "
+        #       f"invisible={invisible_list}")
+        # ─────────────────────────────────────────────────────────────────────
+
         ###########
         # 1. Goal #
         ###########
@@ -280,13 +300,8 @@ class OurPlanner:
             if avg_heading_magnitude > 0 and goal_magnitude > 0:
                 avg_heading_vector = (avg_heading_vector[0] / avg_heading_magnitude, avg_heading_vector[1] / avg_heading_magnitude)
                 goal_vector = (goal_vector[0] / goal_magnitude, goal_vector[1] / goal_magnitude)
-
                 dot_product = avg_heading_vector[0] * goal_vector[0] + avg_heading_vector[1] * goal_vector[1]
-
-                if dot_product >= 0.5:
-                    scores_goal[ped_id] = dot_product
-                else:
-                    scores_goal[ped_id] = -10
+                scores_goal[ped_id] = dot_product if dot_product >= 0.5 else -10
             else:
                 scores_goal[ped_id] = -10
 
@@ -343,34 +358,43 @@ class OurPlanner:
             h_vx, h_vy = trajectory[-1][2], trajectory[-1][3]
             h_mag = math.sqrt(h_vx**2 + h_vy**2)
             r_vx, r_vy = math.cos(robot_yaw), math.sin(robot_yaw)
-            
+
             if h_mag > 0.1:
                 alignment_dot = (h_vx / h_mag) * r_vx + (h_vy / h_mag) * r_vy
+                # FIX: threshold 0.0 means any human moving in a generally
+                # forward direction relative to the robot contributes positively.
                 scores_alignment[ped_id] = alignment_dot if alignment_dot > self.alignment_cone_threshold else 0
             else:
                 scores_alignment[ped_id] = 0
+
+        # ── DEBUG: per-score breakdown before weighting ───────────────────────
+        # print(f"[DEBUG] scores_goal:      {scores_goal}")
+        # print(f"[DEBUG] scores_velocity:  {scores_velocity}")
+        # print(f"[DEBUG] scores_position:  {scores_position}")
+        # print(f"[DEBUG] scores_alignment: {scores_alignment}")
+        # ─────────────────────────────────────────────────────────────────────
 
         #########
         # Total #
         #########
         total_scores = {}
         print("\n--- Leader Selection Scoring ---")
-        print(f"{'ID':<6} | {'Goal':<6} | {'Vel':<6} | {'Pos':<6} | {'Align':<6} | {'TOTAL':<6}")
+        print(f"{'ID':<6} | {'Goal':>6} | {'Vel':>6} | {'Pos':>6} | {'Align':>6} | {'TOTAL':>6}")
         print("-" * 55)
 
         for ped_id in neighbor_traj.keys():
             if ped_id in invisible_list:
                 continue
 
-            s_goal = scores_goal.get(ped_id, 0)
-            s_vel = scores_velocity.get(ped_id, 0)
-            s_pos = scores_position.get(ped_id, 0)
+            s_goal  = scores_goal.get(ped_id, 0)
+            s_vel   = scores_velocity.get(ped_id, 0)
+            s_pos   = scores_position.get(ped_id, 0)
             s_align = scores_alignment.get(ped_id, 0)
 
-            weighted_score = (self.weight_goal * s_goal +
-                              self.weight_velocity * s_vel +
-                              self.weight_position * s_pos +
-                              self.weight_alignment * s_align)
+            weighted_score = (self.weight_goal      * s_goal  +
+                              self.weight_velocity   * s_vel   +
+                              self.weight_position   * s_pos   +
+                              self.weight_alignment  * s_align)
 
             if ped_id == self.previous_leader:
                 weighted_score += self.current_leader_bias
@@ -381,13 +405,23 @@ class OurPlanner:
             total_scores[ped_id] = weighted_score
             print(f"{label:<6} | {s_goal:>6.2f} | {s_vel:>6.2f} | {s_pos:>6.2f} | {s_align:>6.2f} | {weighted_score:>6.2f}")
 
+        # ── DEBUG: why we fall back ───────────────────────────────────────────
+        if not total_scores:
+            print("[DEBUG] FALLBACK: no candidates in total_scores (all invisible or neighbor_traj empty)")
+        elif not any(score > 0 for score in total_scores.values()):
+            best = max(total_scores, key=total_scores.get)
+            print(f"[DEBUG] FALLBACK: best candidate {best} scored {total_scores[best]:.2f} — no score > 0")
+        elif goal_distance <= 1.0:
+            print(f"[DEBUG] FALLBACK: within goal threshold ({goal_distance:.2f}m <= 1.0m)")
+        # ─────────────────────────────────────────────────────────────────────
+
         if (
             total_scores
             and any(score > 0 for score in total_scores.values())
             and goal_distance > 1.0
         ):
             leader_ID = max(total_scores, key=total_scores.get)
-            print(f"WINNER: Agent {leader_ID} at distance: {goal_distance:.2f}")
+            print(f"WINNER: Agent {leader_ID}  score={total_scores[leader_ID]:.2f}  dist={goal_distance:.2f}m")
 
             def get_closest_human_in_group(group, robot_x, robot_y):
                 closest_human = None
@@ -430,7 +464,6 @@ class OurPlanner:
             def get_candidate_positions(vx, vy, angle_range=90):
                 positions = []
                 magnitude = (vx**2 + vy**2)**0.5
-
                 if magnitude != 0:
                     for angle in range(-angle_range, angle_range + 1, 2):
                         angle_rad = math.radians(angle)
@@ -515,7 +548,7 @@ class Robot:
         rospy.init_node('robot_listener', anonymous=True)
         scene = rospy.get_param("scene", "nexus_2_0")
         self.robot_horizon = 15.0
-        self.scene_path = '/root/sim_ws/src/data_play/dataset/scene_config_30/' + scene + '.json'
+        self.scene_path = '/root/NonHoloPeopleAsPlanner/sim_ws/src/data_play/dataset/scene_config_30/' + scene + '.json'
 
         with open(self.scene_path, 'r') as f:
             self.scene_config = json.load(f)
@@ -605,6 +638,7 @@ class Robot:
             self.start_mission = msg.data
 
     def model_info_callback(self, msg):
+        # print("we in the model info callback", self.id_mask, self.robot_state, msg)
         if self.id_mask is None:
             self.id_mask = {}
             for i in range(len(msg.ids)):
@@ -631,6 +665,9 @@ class Robot:
         self.visable_humans = model_temp
 
         if self.start_mission == 1:
+
+            # print("WE ARE IN THE MISSION")
+
             track_id, action, subgoal, invis_index, edges_visible_region = self.planner.predict(
                 state_now, model_temp, self.id_mask, self.laser_scan, robot_yaw
             )
@@ -654,7 +691,7 @@ class Robot:
             omega = max(-1.0, min(1.0, K_omega * yaw_error))
 
             cmd_msg.linear.x = v_turn
-            cmd_msg.linear.y = 0.0   
+            cmd_msg.linear.y = 0.0
             cmd_msg.angular.z = omega
 
             self.cmd_vel_pub.publish(cmd_msg)
@@ -693,9 +730,9 @@ class Robot:
         orientation_list = [orientation_q.x, orientation_q.y, orientation_q.z, orientation_q.w]
         (roll, pitch, yaw) = tf.transformations.euler_from_quaternion(orientation_list)
 
-        v_body = msg.twist.twist.linear.x  
-        vx = v_body * math.cos(yaw)        
-        vy = v_body * math.sin(yaw)        
+        v_body = msg.twist.twist.linear.x
+        vx = v_body * math.cos(yaw)
+        vy = v_body * math.sin(yaw)
 
         with self.lock:
             self.robot_state = [px, py, vx, vy, yaw]

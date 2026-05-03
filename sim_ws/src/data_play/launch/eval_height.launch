@@ -7,7 +7,7 @@
     <env name="GAZEBO_MODEL_PATH" value="${GAZEBO_MODEL_PATH}:$(find gazebo_cars)/models"/>
     <env name="GAZEBO_RESOURCE_PATH" value="${GAZEBO_RESOURCE_PATH}:$(find gazebo_cars)/models"/>
     <include file="$(find gazebo_ros)/launch/empty_world.launch">
-        <arg name="world_name" value="/root/sim_ws/src/data_play/temp/$(arg scene)/world/main.world"/>
+        <arg name="world_name" value="/root/NonHoloPeopleAsPlanner/sim_ws/src/data_play/temp/$(arg scene)/world/main.world"/>
         <arg name="output" value="screen"/>
         <arg name="gui" value="true"/>
     </include>
