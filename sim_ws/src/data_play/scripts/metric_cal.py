@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from shapely.geometry import Point, Polygon
 from shapely.affinity import rotate, translate
 
-
+# --- Helper Classes ---
 class obstacle:
     def __init__(self, vertices):
         self.polygon = Polygon(vertices)
@@ -21,7 +21,6 @@ class obstacle:
     def collsion(self, point):
         p = Point(point)
         return 1 if p.distance(self.polygon) < self.robot_radius else 0
-
 
 class agent:
     def __init__(self, id, data, track_dict):
@@ -61,10 +60,8 @@ class agent:
         px, py, yaw = self.data[index, 1], self.data[index, 2], self.data[index, 3]
         return 1 if self.cal_dist(px, py, yaw, target_point) <= self.robot_radius else 0
 
-
 def quaternion_to_yaw(qx, qy, qz, qw):
     return np.arctan2(2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy * qy + qz * qz))
-
 
 def read_actor_data(trial_folder):
     actor_data = {}
@@ -82,7 +79,6 @@ def read_actor_data(trial_folder):
         except Exception as e:
             print(f"Skipping {file} due to error: {e}")
     return actor_data
-
 
 def read_status_data(trial_folder):
     status_file = os.path.join(trial_folder, "status.txt")
@@ -103,7 +99,6 @@ def read_status_data(trial_folder):
     last_line = lines[-1].strip()
     finish_time = float(last_line.split(":")[1].strip()) if "success:" in last_line else None
     return status_data, last_line, finish_time
-
 
 def process_scene(scene_name):
     base_path = f"/root/test_data/{scene_name}/"
@@ -145,12 +140,17 @@ obs_list = [obstacle(np.array(obs)) for obs in scene_config["obstacles"]]
 robot_pos_goal = np.array(scene_config["robot_start_end"])
 start_pos, goal_pos = robot_pos_goal[0:2], robot_pos_goal[2:4]
 
-# ── CSV Logging ────────────────────────────────────────────────────────────
+# ── CSV Logging & Collision Tracking ───────────────────────────────────────
 file_path = f"/root/test_data/{scene_name}/experiment_log.csv"
 with open(file_path, "w") as f:
-    f.write("Trial_ID, Finish, Total_collision, traveling_dis, Total_Time\n")
+    f.write("Trial_ID, Finish, Ped_collision, Obs_collision, traveling_dis, Total_Time\n")
+
+# We will store collision points for the specific trial we plot later
+collision_points = []
 
 sorted_trials = sorted(scene_results.items(), key=lambda x: int(x[0]))
+target_plot_trial_id, target_plot_data = sorted_trials[-2] # Trial for graph
+
 for trial_id, data in sorted_trials:
     status = data["status_data"]
     agent_list = [agent(aid, arr, track_dict) for aid, arr in data["actor_data"].items()]
@@ -161,15 +161,22 @@ for trial_id, data in sorted_trials:
         if prev_pos is not None:
             dist += np.linalg.norm(curr_pos - prev_pos)
         prev_pos = curr_pos
-        h_coll += sum(1 for ped in agent_list if ped.cal_index_collision(index, curr_pos))
-        o_coll += sum(1 for obs in obs_list if obs.collsion(curr_pos))
+        
+        is_h_coll = sum(1 for ped in agent_list if ped.cal_index_collision(index, curr_pos))
+        is_o_coll = sum(1 for obs in obs_list if obs.collsion(curr_pos))
+        
+        h_coll += is_h_coll
+        o_coll += is_o_coll
+
+        # If this is our plotting trial and a collision happened, save the location
+        if trial_id == target_plot_trial_id and (is_h_coll > 0 or is_o_coll > 0):
+            collision_points.append(curr_pos)
 
     with open(file_path, "a") as f:
-        f.write(f"{trial_id},{1 if data['finish_time'] else 0},{h_coll+o_coll},{dist},{data['finish_time']}\n")
+        f.write(f"{trial_id},{1 if data['finish_time'] else 0},{h_coll},{o_coll},{dist},{data['finish_time']}\n")
 
-# ── Plotting Separated Graphs ──────────────────────────────────────────────
-latest_trial_id, latest_data = sorted_trials[-2]
-status = latest_data["status_data"]
+# ── Plotting ──────────────────────────────────────────────────────────────
+status = target_plot_data["status_data"]
 xs, ys, yaws = status[:, 1], status[:, 2], status[:, 3]
 has_yaw = not np.all(np.isnan(yaws))
 
@@ -183,30 +190,37 @@ def setup_ax(ax, title):
     ax.set_title(title)
     for obs in obs_list:
         ax.fill(*obs.polygon.exterior.xy, color='black', alpha=0.8, zorder=2)
-    ax.plot(xs, ys, color='royalblue', lw=1, alpha=0.4, zorder=3)
+    ax.plot(xs, ys, color='royalblue', lw=1, alpha=0.4, zorder=3, label='Path')
     ax.scatter(*start_pos, color='green', marker='^', s=150, zorder=7, label='Start')
     ax.scatter(*goal_pos, color='red', marker='*', s=150, zorder=7, label='Goal')
+    
+    # NEW: Plot Collision Points
+    if collision_points:
+        cp = np.array(collision_points)
+        ax.scatter(cp[:, 0], cp[:, 1], color='crimson', marker='X', s=80, zorder=10, label='Collision')
+        
     ax.grid(True, alpha=0.2)
+    ax.legend(loc='upper right', fontsize='small')
 
 arrow_every = max(1, len(xs) // 25)
 arrow_len = 0.5
 
-# Plot 1: Velocity
+# Plot 1: Velocity (with Collision markers)
 fig1, ax1 = plt.subplots(figsize=(10, 10))
-setup_ax(ax1, f"Trial {latest_trial_id}: Velocity Direction (Movement Path)")
+setup_ax(ax1, f"Trial {target_plot_trial_id}: Velocity Direction & Collisions")
 for i in range(0, len(dx), arrow_every):
     ax1.annotate("", xy=(xs[i]+dx_n[i]*arrow_len, ys[i]+dy_n[i]*arrow_len), xytext=(xs[i], ys[i]),
-                 arrowprops=dict(arrowstyle="-|>", color='limegreen', lw=1.5))
+                 arrowprops=dict(arrowstyle="-|>", color='limegreen', lw=1.5, alpha=0.7))
 fig1.savefig(f"/root/test_data/{scene_name}/robot_velocity.png", dpi=150)
 
 # Plot 2: Heading
 if has_yaw:
     fig2, ax2 = plt.subplots(figsize=(10, 10))
-    setup_ax(ax2, f"Trial {latest_trial_id}: Robot Heading (Yaw)")
+    setup_ax(ax2, f"Trial {target_plot_trial_id}: Robot Heading (Yaw)")
     for i in range(0, len(xs), arrow_every):
         if not np.isnan(yaws[i]):
             ax2.annotate("", xy=(xs[i]+np.cos(yaws[i])*arrow_len, ys[i]+np.sin(yaws[i])*arrow_len), 
-                         xytext=(xs[i], ys[i]), arrowprops=dict(arrowstyle="-|>", color='darkorange', lw=1.5))
+                         xytext=(xs[i], ys[i]), arrowprops=dict(arrowstyle="-|>", color='darkorange', lw=1.5, alpha=0.7))
     fig2.savefig(f"/root/test_data/{scene_name}/robot_heading.png", dpi=150)
 
 print(f"Done. Graphs saved to /root/test_data/{scene_name}/")
