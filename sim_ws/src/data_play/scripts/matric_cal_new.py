@@ -7,7 +7,8 @@ import re
 import json
 
 import matplotlib
-# matplotlib.use('Qt5Agg')
+# Force an interactive GUI backend. TkAgg is usually the most bulletproof in Docker.
+matplotlib.use('TkAgg') 
 import matplotlib.pyplot as plt
 import numpy as np
 from shapely.geometry import Point, Polygon
@@ -195,7 +196,7 @@ def read_status_data(trial_folder):
     status_data = []
     for line in lines[:-1]:  # Ignore last line for now
         parts = line.strip().split()
-        if len(parts) == 3:  # Ensure format is time px py
+        if len(parts) >= 3:  # Ensure format is time px py
             status_data.append([float(parts[0]), float(parts[1]), float(parts[2])])
 
     # Convert to NumPy array
@@ -250,7 +251,7 @@ scene_name = "crossing_0"
 scene_results = process_scene(scene_name)
 
 track_dict={}
-with open(f"/root/NonHoloPeopleAsPlanner/sim_ws/src/data_play/temp/{scene_name}/pair/data_id_label_pairs.txt", "r") as file:
+with open(f"/root/sim_ws/src/data_play/temp/{scene_name}/pair/data_id_label_pairs.txt", "r") as file:
     next(file)  # Skip the first line
     for line in file:
         parts = line.strip().split(" ", 1)  # Split at the first space only
@@ -259,7 +260,7 @@ with open(f"/root/NonHoloPeopleAsPlanner/sim_ws/src/data_play/temp/{scene_name}/
             track_dict[int(track_id)] = label  # Convert track_id to int for consistency
 print(track_dict)
 
-config_path = '/root/NonHoloPeopleAsPlanner/sim_ws/src/data_play/dataset/scene_config_30/' + scene_name + '.json'
+config_path = '/root/sim_ws/src/data_play/dataset/scene_config_30/' + scene_name + '.json'
 with open(config_path, 'r') as f:
     scene_config = json.load(f)  # Correct way to load JSON
 

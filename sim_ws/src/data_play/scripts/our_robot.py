@@ -105,10 +105,16 @@ class social_force:
             if dist_to_human == 0:
                 continue
 
+            dist_to_human = max(dist_to_human, 0.1)
+
             if min_dist_to_human > dist_to_human:
                 min_dist_to_human = dist_to_human
-                vx_human = A * np.exp((self.radius + human_radius - dist_to_human) / B) * (delta_x / dist_to_human)
-                vy_human = A * np.exp((self.radius + human_radius - dist_to_human) / B) * (delta_y / dist_to_human)
+
+            force_magnitude = A * np.exp((self.radius + human_radius - dist_to_human) / B)
+            force_magnitude = min(force_magnitude, 10.0)
+
+            vx_human += force_magnitude * (delta_x / dist_to_human)
+            vy_human += force_magnitude * (delta_y / dist_to_human)
 
         interaction_vx += vx_human
         interaction_vy += vy_human
@@ -154,29 +160,22 @@ class social_force:
 
 class OurPlanner:
     def __init__(self, goal, obs_list):
-
         self.default = False
         self.robot_range = 10
         self.robot_radius = 1.0
         self.previous_leader = None
         self.following_id_vis = -1
 
-        #################
-        # Tunable Param #-----------------------------------
-        #################
-        # agent
         self.human_radius = 0.8
         self.human_speed_ideal = 1.4
         self.human_speed_min = 0.6
         self.robot_speed_max = 1.4
 
-        # score function
         self.goal_score_steps = 10
         self.catchup_threshold = 1.5
         self.catchup_speed = 2.0
         self.position_penalty = -1.75
 
-        # weight
         self.weight_goal = 1.0
         self.weight_velocity = 0.5
         self.weight_position = 1.0
@@ -184,18 +183,15 @@ class OurPlanner:
         self.alignment_cone_threshold = 0.5
         self.current_leader_bias = 0.05
 
-        # group identification
         self.min_distance_threshold = 1.5
         self.distance_threshold = 2.0
         self.velocity_threshold = 0.5
 
-        # visibility
         self.inflate_radius = 0.5
 
-        # proximity speed cap
-        self.DANGER_DIST  = 1.0
-        self.CAUTION_DIST = 2.5
-        #-----------------------------------------------------
+        # Increased safety distance thresholds
+        self.DANGER_DIST = 1.5
+        self.CAUTION_DIST = 3.5
 
         self.goal = goal
         self.obs_list = obs_list
@@ -207,7 +203,6 @@ class OurPlanner:
         self.time_step = 0.11
 
     def predict(self, state, human_step, mask, laser_scan, robot_yaw=0.0):
-
         while len(self.state_buffer) < self.list_length:
             self.state_buffer.append(state)
         while len(self.human_buffer) < self.list_length:
@@ -218,9 +213,6 @@ class OurPlanner:
         robot_goal_vector = (global_goal_x - state[0], global_goal_y - state[1])
         goal_distance = math.sqrt(robot_goal_vector[0]**2 + robot_goal_vector[1]**2)
 
-        #########################
-        # Leader Identification #
-        #########################
         neighbor_traj = {}
         for timestep in self.human_buffer:
             for human in timestep:
@@ -230,9 +222,6 @@ class OurPlanner:
                         neighbor_traj[id] = []
                     neighbor_traj[id].append([px, py, vx, vy])
 
-        ########################
-        # Group Identification #
-        ########################
         groups = []
         visited = set()
 
@@ -254,9 +243,6 @@ class OurPlanner:
             if len(group) > 1:
                 groups.append(group)
 
-        ####################
-        # Visibility Check #
-        ####################
         robot_pose = [state[0], state[1], robot_yaw]
         human_radius = [self.inflate_radius for i in range(len(human_step))]
         human_scores_list = human_scoring(laser_scan, human_step, robot_pose, human_radius)
@@ -267,11 +253,7 @@ class OurPlanner:
             if score < 0:
                 invisible_list.append(human_step[k][0])
 
-        ###########
-        # 1. Goal #
-        ###########
         scores_goal = {}
-
         for ped_id, trajectory in neighbor_traj.items():
             num_steps = min(self.goal_score_steps, len(trajectory))
             avg_heading_vector = [0, 0]
@@ -290,9 +272,6 @@ class OurPlanner:
             else:
                 scores_goal[ped_id] = -10
 
-        ###############
-        # 2. Velocity #
-        ###############
         scores_velocity = {}
         human_speeds = {}
         ideal_speed = self.human_speed_ideal
@@ -311,9 +290,6 @@ class OurPlanner:
             else:
                 scores_velocity[ped_id] = max(0, 1 - (abs(avg_speed - ideal_speed) / ideal_speed))
 
-        ###############
-        # 3. Position #
-        ###############
         scores_position = {}
         hr_distance = {}
         hr_vector = {}
@@ -335,9 +311,6 @@ class OurPlanner:
             else:
                 scores_position[ped_id] = self.position_penalty
 
-        #####################
-        # 4. Alignment Cone #
-        #####################
         scores_alignment = {}
         for ped_id, trajectory in neighbor_traj.items():
             h_vx, h_vy = trajectory[-1][2], trajectory[-1][3]
@@ -350,35 +323,27 @@ class OurPlanner:
             else:
                 scores_alignment[ped_id] = 0
 
-        #########
-        # Total #
-        #########
         total_scores = {}
-
         for ped_id in neighbor_traj.keys():
             if ped_id in invisible_list:
                 continue
 
-            s_goal  = scores_goal.get(ped_id, 0)
-            s_vel   = scores_velocity.get(ped_id, 0)
-            s_pos   = scores_position.get(ped_id, 0)
+            s_goal = scores_goal.get(ped_id, 0)
+            s_vel = scores_velocity.get(ped_id, 0)
+            s_pos = scores_position.get(ped_id, 0)
             s_align = scores_alignment.get(ped_id, 0)
 
-            weighted_score = (self.weight_goal      * s_goal  +
-                              self.weight_velocity   * s_vel   +
-                              self.weight_position   * s_pos   +
-                              self.weight_alignment  * s_align)
+            weighted_score = (self.weight_goal * s_goal +
+                              self.weight_velocity * s_vel +
+                              self.weight_position * s_pos +
+                              self.weight_alignment * s_align)
 
             if ped_id == self.previous_leader:
                 weighted_score += self.current_leader_bias
 
             total_scores[ped_id] = weighted_score
 
-        if (
-            total_scores
-            and any(score > 0 for score in total_scores.values())
-            and goal_distance > 1.0
-        ):
+        if total_scores and any(score > 0 for score in total_scores.values()) and goal_distance > 1.0:
             leader_ID = max(total_scores, key=total_scores.get)
 
             def get_closest_human_in_group(group, robot_x, robot_y):
@@ -399,22 +364,14 @@ class OurPlanner:
                     break
             if leader_group:
                 closest_human = get_closest_human_in_group(leader_group, state[0], state[1])
-                if (
-                    closest_human[0] != leader_ID
-                    and closest_human[0] not in invisible_list
-                    and total_scores[closest_human[0]] > 0
-                ):
+                if closest_human[0] != leader_ID and closest_human[0] not in invisible_list and total_scores[closest_human[0]] > 0:
                     leader_ID = closest_human[0]
 
             self.following_id_vis = leader_ID
             self.previous_leader = leader_ID
 
-            ###############
-            # Set Subgoal #
-            ###############
             vx = hr_vector[leader_ID][0]
             vy = hr_vector[leader_ID][1]
-
             base_gx = neighbor_traj[leader_ID][-1][0]
             base_gy = neighbor_traj[leader_ID][-1][1]
 
@@ -456,19 +413,14 @@ class OurPlanner:
                 direction_vy = new_gy - base_gy
                 direction_mag = (direction_vx**2 + direction_vy**2)**0.5
                 if direction_mag > 0:
-                    scale = (min_safe_distance / min_distance) * 1.0
+                    scale = (min_safe_distance / max(min_distance, 0.01)) * 1.0
                     new_gx = base_gx + scale * direction_vx
                     new_gy = base_gy + scale * direction_vy
 
-            #################
-            # Set New Speed #
-            #################
-            command_v_pref = 0
             if hr_distance[leader_ID] > self.catchup_threshold:
                 command_v_pref = self.catchup_speed
             else:
                 command_v_pref = human_speeds[leader_ID]
-
         else:
             self.following_id_vis = -1
             new_gx = global_goal_x
@@ -480,9 +432,6 @@ class OurPlanner:
             new_gy = global_goal_y
             command_v_pref = self.robot_speed_max
 
-        #######################
-        # Proximity Speed Cap #
-        #######################
         min_human_dist = float('inf')
         closest_human_id = -1
         for human in human_step:
@@ -499,36 +448,14 @@ class OurPlanner:
             t = (min_human_dist - self.DANGER_DIST) / (self.CAUTION_DIST - self.DANGER_DIST)
             command_v_pref = min(command_v_pref, 0.2 + t * (original_v_pref - 0.2))
 
-        # ── DEBUG: planner output ─────────────────────────────────────────────
-        is_leader_close = (closest_human_id == self.following_id_vis)
-        rospy.logwarn(
-            f"\n[PLANNER] leader={self.following_id_vis}  "
-            f"subgoal=({new_gx:.2f},{new_gy:.2f})\n"
-            f"  closest_human={closest_human_id} "
-            f"({'LEADER' if is_leader_close else 'bystander'}) "
-            f"dist={min_human_dist:.2f}m\n"
-            f"  v_pref: {original_v_pref:.2f} → capped to {command_v_pref:.2f}  "
-            f"({'DANGER' if min_human_dist < self.DANGER_DIST else 'CAUTION' if min_human_dist < self.CAUTION_DIST else 'OK'})\n"
-            f"  action=({self.base_controller.v_pref:.2f} max)  "
-            f"goal_dist={goal_distance:.2f}m"
-        )
-        # ─────────────────────────────────────────────────────────────────────
-
         comand_goal = np.array([new_gx, new_gy])
         action = self.base_controller.predict(comand_goal, state, human_step, mask, command_v_pref)
-
-        # ── DEBUG: social force output ────────────────────────────────────────
-        rospy.logwarn(
-            f"  SF action=({action[0]:.2f},{action[1]:.2f})  "
-            f"speed={math.sqrt(action[0]**2+action[1]**2):.2f}m/s"
-        )
-        # ─────────────────────────────────────────────────────────────────────
 
         try:
             self.state_buffer.pop(0)
             self.human_buffer.pop(0)
         except Exception as e:
-            rospy.logwarn(f"Error while popping from buffers: {e}")
+            pass
 
         self.state_buffer.append(state)
         self.human_buffer.append(human_step)
@@ -541,7 +468,6 @@ class OurPlanner:
 
 
 class Robot:
-
     def __init__(self):
         self.lock = threading.Lock()
         rospy.init_node('robot_listener', anonymous=True)
@@ -563,7 +489,6 @@ class Robot:
             self.obs_list.append(np.array(obs))
 
         self.planner = OurPlanner(self.goal_pos, self.obs_list)
-
         self.start_mission = 0
 
         rospy.wait_for_service('/gazebo/set_model_state')
@@ -575,15 +500,12 @@ class Robot:
         self.laser_point = None
         self.laser_scan = []
 
-        # Subscribers
         self.model_info_sub = rospy.Subscriber('/gazebo/model_info', ModelInfo, self.model_info_callback)
         self.odom_sub = rospy.Subscriber('/odom', Odometry, self.odom_callback)
         self.mission_sub = rospy.Subscriber('/env_control', Int32, self.mission_callback)
         self.laser_sub = rospy.Subscriber('/robot_1/laser_scan', LaserScan, self.laser_callback)
         self.invisable_pub = rospy.Publisher('/invisable_id', Int32MultiArray, queue_size=1)
         self.vis_pub = rospy.Publisher("/vis_array_topic", Float32MultiArray, queue_size=10)
-
-        # Publisher
         self.cmd_vel_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
 
         rospy.loginfo("Robot Node Initialized: Subscribed to /gazebo/model_info and /odom, Publishing to /cmd_vel")
@@ -591,7 +513,6 @@ class Robot:
         self.edges_visible_region = np.array([])
         self.pubVisibleEdges = rospy.Publisher('/visibleEdges', Marker, queue_size=2)
 
-        # collision logging
         self.collision_radius = 0.5
         self.collision_log = []
         self._last_v = 0.0
@@ -640,7 +561,7 @@ class Robot:
             if self.collision_log:
                 rospy.loginfo(f"Trial ended — {len(self.collision_log)} collisions recorded")
                 for entry in self.collision_log:
-                    rospy.loginfo(f"  t={entry[0]:.1f}s human={entry[1]} type={entry[2]}")
+                    rospy.loginfo(f"  t={entry[0]:.1f}s human={entry[1]} type={entry[2]} dir={entry[3]}")
             self.collision_log = []
             self._reset_robot_pose()
             self.planner.clear_buffer()
@@ -674,11 +595,9 @@ class Robot:
         self.visable_humans = model_temp
 
         if self.start_mission == 1:
-
             timestamp = rospy.Time.now().to_sec()
             robot_x, robot_y = state_now[0], state_now[1]
 
-            # ── COLLISION DEBUG ───────────────────────────────────────────────
             human_dists = []
             for human in model_temp:
                 h_id = int(human[0])
@@ -692,26 +611,31 @@ class Robot:
                 is_leader = (closest_id == self.planner.following_id_vis)
                 label = "LEADER" if is_leader else "bystander"
 
-                # Log a proximity warning at 3m so we can see approach before collision
-                if closest_dist < 3.0:
-                    rospy.logwarn(
-                        f"\n=== PROXIMITY t={timestamp:.1f}s ===\n"
-                        f"  Robot: ({robot_x:.2f},{robot_y:.2f})  "
-                        f"yaw={math.degrees(robot_yaw):.1f}deg\n"
-                        f"  Leader: {self.planner.following_id_vis}\n"
-                        f"  Closest: {closest_id} ({label}) at {closest_dist:.2f}m\n"
-                        f"  All within 3m: {[(h, round(d,2)) for h,d in human_dists if d < 3.0]}\n"
-                        f"  Last cmd_vel: v={self._last_v:.2f}  omega={self._last_omega:.2f}"
-                    )
+                hx, hy = 0.0, 0.0
+                for h in model_temp:
+                    if int(h[0]) == closest_id:
+                        hx, hy = h[1], h[2]
+                        break
 
-                # Collision event
+                angle_to_human = math.atan2(hy - robot_y, hx - robot_x)
+                rel_angle = (angle_to_human - robot_yaw + math.pi) % (2 * math.pi) - math.pi
+
+                if abs(rel_angle) <= math.pi / 4:
+                    zone = "FRONT"
+                elif abs(rel_angle - math.pi / 2) <= math.pi / 4:
+                    zone = "LEFT"
+                elif abs(rel_angle + math.pi / 2) <= math.pi / 4:
+                    zone = "RIGHT"
+                else:
+                    zone = "BEHIND"
+
                 if closest_dist < self.collision_radius:
                     rospy.logerr(
                         f"  *** COLLISION *** human={closest_id} ({label}) "
-                        f"dist={closest_dist:.2f}m  v={self._last_v:.2f}"
+                        f"dist={closest_dist:.2f}m  v={self._last_v:.2f} "
+                        f"Approach Direction: {zone}"
                     )
-                    self.collision_log.append((timestamp, closest_id, label))
-            # ─────────────────────────────────────────────────────────────────
+                    self.collision_log.append((timestamp, closest_id, label, zone))
 
             track_id, action, subgoal, invis_index, edges_visible_region = self.planner.predict(
                 state_now, model_temp, self.id_mask, self.laser_scan, robot_yaw
@@ -739,7 +663,6 @@ class Robot:
             cmd_msg.linear.y = 0.0
             cmd_msg.angular.z = omega
 
-            # Store for next tick's debug log
             self._last_v = v_turn
             self._last_omega = omega
 
