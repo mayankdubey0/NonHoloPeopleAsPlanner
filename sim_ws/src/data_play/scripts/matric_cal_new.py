@@ -189,11 +189,16 @@ def read_status_data(trial_folder):
     with open(status_file, "r") as f:
         lines = f.readlines()
 
+    ######## Mayank Change ########
+    if not lines:
+        return np.empty((0, 3)), "empty", None
+    ######## End of Mayank Change #######
+
     # Extract numerical data
     status_data = []
     for line in lines[:-1]:  # Ignore last line for now
         parts = line.strip().split()
-        if len(parts) == 3:  # Ensure format is time px py
+        if len(parts) >= 3:  # Ensure format is time px py
             status_data.append([float(parts[0]), float(parts[1]), float(parts[2])])
 
     # Convert to NumPy array
@@ -222,14 +227,23 @@ def process_scene(scene_name):
 
         trial_id = os.path.basename(trial_folder).split("_")[-1]  # Extract trial ID
         print(trial_id)
-        if int(trial_id)<0:
+        
+        # if int(trial_id)<0:
+        #     continue
+        if int(trial_id)!=5:
             continue
 
         # Read actor data
         actor_data = read_actor_data(trial_folder)
 
         # Read status data
-        status_data, last_status_message, finish_time = read_status_data(trial_folder)
+        # status_data, last_status_message, finish_time = read_status_data(trial_folder)
+        # Read status data
+        try:
+            status_data, last_status_message, finish_time = read_status_data(trial_folder)
+        except (FileNotFoundError, IndexError):
+            print(f"Skipping trial {trial_id} — bad or empty status file")
+            continue
 
         # Store in results
         results[trial_id] = {

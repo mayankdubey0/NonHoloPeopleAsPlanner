@@ -33,7 +33,7 @@
     <node pkg="data_play" type="env_vis.py" name="model_visualization_node" output="screen">
     </node>
 
-    <node pkg="data_play" type="our_robot.py" name="robot_node"> <!-- Specify method here -->
+    <node pkg="data_play" type="our_robot.py" name="robot_node" output="screen"> <!-- Specify method here -->
     </node>
 
     <node pkg="data_play" type="recorder_new.py" name="recorder_node">

@@ -161,7 +161,7 @@ class DWA:
         #################
         # Tunable Param #
         #################
-        self.v_max      = 5    # max linear speed (m/s)
+        self.v_max      = 2    # max linear speed (m/s)
         self.v_min      = 0.0    # min linear speed
         self.omega_max  = 1.0    # max angular speed (rad/s)
         self.omega_min  = -1.0
@@ -300,6 +300,7 @@ class OurPlanner:
         self.weight_goal = 1.0
         self.weight_velocity = 0.5
         self.weight_position = 1.0
+        self.weight_orientation = 0.5 ####### Mayank Change #######3
         self.current_leader_bias = 0.05
 
         # group identification
@@ -309,6 +310,7 @@ class OurPlanner:
         
         # visibility
         self.inflate_radius = 0.5
+        self.distance_cutoff = 10
         #-----------------------------------------------------
 
         self.goal=goal
@@ -323,7 +325,7 @@ class OurPlanner:
 
     def predict(self,state,human_step,mask,laser_scan):
         
-        # state [px py vx vy]
+        # state [px py vx vy] ##### now state [px py vx vy theta]
         while(len(self.state_buffer)<self.list_length):
             self.state_buffer.append(state)
         while(len(self.human_buffer)<self.list_length):
@@ -378,7 +380,7 @@ class OurPlanner:
         ####################
         group_list = [[agent[0] for agent in group] for group in groups]  
         
-        robot_pose = [state[0], state[1], 0.0] # dummy yaw
+        robot_pose = [state[0], state[1], 0] # dummy yaw
         human_radius = [self.inflate_radius for i in range(len(human_step))] # inflate by robot passing radius
         human_scores_list = human_scoring(laser_scan, human_step, robot_pose, human_radius)
         visible_region_edges = np.array([])
@@ -460,10 +462,26 @@ class OurPlanner:
             robot_heading = (robot_heading[0] / r_heading_mag, robot_heading[1] / r_heading_mag)
             
             dot_product = human_vector[0] * robot_heading[0] + human_vector[1] * robot_heading[1]
-            if dot_product >= 0.5:  # within +/-60 degree
+            ######### Mayank Change ##########
+            if distance >= self.distance_cutoff:
+                scores_position[ped_id] = -10
+            ######## End of Mayank Change ########
+            elif dot_product >= 0.5:  # within +/-60 degree
                 scores_position[ped_id] = (dot_product + max(0, 1 - (distance / self.robot_range))) / 2
             else:  # behind
                 scores_position[ped_id] = self.position_penalty
+
+        #################3 Mayank Change ###########################3
+        scores_orientation = {}
+
+        for ped_id, trajectory in neighbor_traj.items():
+            human_pos = trajectory[-1][:2] # (px, py)
+            alpha_i = math.atan2(human_pos[0] - state[0], human_pos[1] - state[1])
+            dtheta = alpha_i - state[4]
+            scores_orientation[ped_id] = np.cos(dtheta)
+        
+        #################33 End of Mayank Change ######################3
+
 
         #########
         # Total #
@@ -473,20 +491,51 @@ class OurPlanner:
             score_goal = scores_goal.get(ped_id, -1)
             score_velocity = scores_velocity.get(ped_id, -1)
             score_position = scores_position.get(ped_id, -1)
+
+            ###########3 Mayank Change ######################3
+            score_orientation = scores_orientation.get(ped_id, -1)
+            ########### End of Mayank Change ################
+            
             # filter out invisible humans
             if ped_id not in invisible_list:
                 total_scores[ped_id] = (self.weight_goal * score_goal + 
                                         self.weight_velocity * score_velocity + 
-                                        self.weight_position * score_position)
+                                        self.weight_position * score_position + 
+                                        self.weight_orientation * score_orientation ##### Mayank Change #######
+                                        )
             
-            print(f"ID: {ped_id:>1} | goal: {score_goal:>5.1f} | vel: {score_velocity:>5.1f} | pos: {score_position:>5.1f}")
+            print(f"ID: {ped_id:>1} | goal: {score_goal:>5.1f} | vel: {score_velocity:>5.1f} | pos: {score_position:>5.1f} | orient: {score_orientation:>5.1f} | total: {total_scores.get(ped_id, 'INVIS'):>6}")  #########3 Mayank Change ############
 
         # Favour current leader to avoid fluctuation
         for human in total_scores:
             if human == self.previous_leader:
                 total_scores[human] += self.current_leader_bias
                 continue
-                
+        
+        ############## Mayank Change ###############3
+        # Leader Selection Debug Log 
+        print("=" * 60)
+        print(f"Robot pos: ({state[0]:.1f}, {state[1]:.1f}) | theta: {math.degrees(state[4]):.1f} deg | dist to goal: {goal_distance:.2f}m")
+        if total_scores:
+            sorted_scores = sorted(total_scores.items(), key=lambda x: x[1], reverse=True)
+            print(f"{'Rank':<5} {'ID':<6} {'Score':>7} {'Notes'}")
+            for rank, (pid, score) in enumerate(sorted_scores):
+                notes = []
+                if pid == self.previous_leader:
+                    notes.append("CURRENT_LEADER (+bias)")
+                if scores_goal.get(pid, -10) == -10:
+                    notes.append("bad_heading")
+                if scores_velocity.get(pid, -10) == -10:
+                    notes.append("stationary")
+                if scores_position.get(pid, 0) == self.position_penalty:
+                    notes.append("behind_robot")
+                print(f"  {rank+1:<3} ID={pid:<4} score={score:>6.2f}  {', '.join(notes)}")
+        else:
+            print("No scoreable leaders found → default planner")
+        print("=" * 60)
+        ############# End of Mayank Change ##########
+
+        
         # check if we should follow leaders
         if (
             total_scores # exist neighbors
@@ -570,6 +619,10 @@ class OurPlanner:
             candidate_positions = get_candidate_positions(vx, vy)
             best_position = max(candidate_positions, key=lambda pos: evaluate_position(pos[0], pos[1]))
             new_gx, new_gy = best_position
+
+            ####### Mayank Change ######
+            print(f">>> SELECTED leader ID={leader_ID} | subgoal=({new_gx:.2f}, {new_gy:.2f})")
+            ####### End of Mayank Change ####
             
             # if sample pos is close to neighbor, set further
             min_safe_distance = 2.0
@@ -618,6 +671,8 @@ class OurPlanner:
         # print("Command Goal:", comand_goal)
         # print("Robot state:",state)
         action=self.base_controller.predict(comand_goal,state,human_step,mask,command_v_pref)
+        print(f">>> DWA output: v={action[0]:.3f} m/s, omega={action[1]:.3f} rad/s | subgoal=({comand_goal[0]:.2f}, {comand_goal[1]:.2f})")
+
 
         try:
             self.state_buffer.pop(0)
